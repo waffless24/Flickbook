@@ -132,19 +132,19 @@ public class Main {
         String pwd = System.getProperty("user.dir");
 
         // --- File Selection ---
-        File actDir = selectSimulationDirectory(null, "Choose Active Sim CM", pwd, "CM");
+        File actDir = selectSimulationDirectory(null, "Choose Active Sim CM", pwd, "PF");
         if (actDir == null) {
             System.out.println("Active sim selection required. Program Terminated.");
             System.exit(0);
         }
 
-        File bslDir = selectSimulationDirectory(null, "Choose Baseline Sim CM", pwd, "CM");
+        File bslDir = selectSimulationDirectory(null, "Choose Baseline Sim CM", pwd, "PF");
         if (bslDir == null) {
             System.out.println("Baseline sim selection required. Program Terminated.");
             System.exit(0);
         }
 
-        File deltaDir = selectSimulationDirectory(null, "Choose Delta Sim CM", pwd, "CM");
+        File deltaDir = selectSimulationDirectory(null, "Choose Delta Sim CM", pwd, "PF");
         if (deltaDir == null) {
             System.out.println("Delta sim selection required. Program Terminated.");
             System.exit(0);
