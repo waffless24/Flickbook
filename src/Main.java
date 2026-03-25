@@ -7,7 +7,7 @@ public class Main {
 
     //File Structure Constants
     private static final String[] VIEWS = {"AftFore", "TopBottom", "Profile"};
-    private static final String[] VARIABLES = {"Inwash", "Pressure", "Total Pressure", "VISQ", "Velocity Z", "Helicity"};
+    private static final String[] VARIABLES = {"Inwash", "Pressure", "Total Pressure", "VISQ", "Upwash", "Helicity"};
     //Action Commands
     private static final String ACTION_STREAM_DOWN = "streamDown";
     private static final String ACTION_STREAM_UP = "streamUp";
@@ -131,7 +131,7 @@ public class Main {
     private static void createAndShowGui() {
         String pwd = System.getProperty("user.dir");
 
-        // --- File Selection ---
+        // File Selection
         File actDir = selectSimulationDirectory(null, "Choose Active Sim CM", pwd, "PF");
         if (actDir == null) {
             System.out.println("Active sim selection required. Program Terminated.");
@@ -150,19 +150,19 @@ public class Main {
             System.exit(0);
         }
 
-        // --- Window Setup ---
+        // Window Setup
         JFrame window = new JFrame();
         window.setTitle("Purdue FormulaSAE Flickbook");
         window.setSize(1600, 900);
         window.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         window.getContentPane().setBackground(new Color(229, 229, 229));
 
-        // --- Scene Loading ---
+        // Scene Loading
         SceneLoader actLoader = new SceneLoader(actDir.getAbsolutePath());
         SceneLoader bslLoader = new SceneLoader(bslDir.getAbsolutePath());
         SceneLoader deltaLoader = new SceneLoader(deltaDir.getAbsolutePath());
 
-        // --- Image Display Panel Setup ---
+        // Image Display Panel Setup
         // Initialize with the default view
         ImageDisplayPanel displayer = new ImageDisplayPanel(
                 actLoader.cptScenes.getImages(currentView), // Default to 'Total Pressure' initially
@@ -174,7 +174,7 @@ public class Main {
                 deltaDir.getName()
         );
 
-        // --- Popup Menu Setup ---
+        // Popup Menu Setup
         JPopupMenu mainMenu = new JPopupMenu();
 
         ActionListener menuListener = event -> {
@@ -215,7 +215,7 @@ public class Main {
                     bslScenes = bslLoader.inwashScenes;
                     deltaScenes = deltaLoader.inwashScenes;
                     break;
-                case "Velocity Z":
+                case "Upwash":
                     actScenes = actLoader.velZScenes;
                     bslScenes = bslLoader.velZScenes;
                     deltaScenes = deltaLoader.velZScenes;

@@ -39,11 +39,9 @@ public class ImageDisplayPanel extends JPanel {
 
     private boolean showGrid = false;
 
-    // --- NEW: State variables for mirror functionality ---
     private boolean mirrorMode = false;
     private boolean mirrorVertical = true; // true for vertical, false for horizontal
     private boolean mirrorFirstHalf = true; // true for left/top, false for right/bottom
-    // --- END NEW ---
 
     private final Font textFont = new Font("Source Sans Pro", Font.ITALIC, 15);
     private String selectedView;
@@ -146,7 +144,6 @@ public class ImageDisplayPanel extends JPanel {
             }
         });
 
-        // --- MODIFIED: Consolidated Key Listener ---
         // Combines all key-based actions into a single listener.
         setFocusable(true);
         addKeyListener(new KeyAdapter() {
@@ -160,7 +157,6 @@ public class ImageDisplayPanel extends JPanel {
                         showGrid = !showGrid;
                         repaint();
                         break;
-                    // --- NEW: Key controls for mirroring ---
                     case KeyEvent.VK_M: // 'M' to toggle Mirror mode
                         mirrorMode = !mirrorMode;
                         repaint();
@@ -173,14 +169,11 @@ public class ImageDisplayPanel extends JPanel {
                         mirrorFirstHalf = !mirrorFirstHalf;
                         repaint();
                         break;
-                    // --- END NEW ---
                 }
             }
         });
-        // --- END MODIFIED ---
     }
 
-    // --- CORRECTED: Helper method to create a mirrored image ---
     /**
      * Creates a new image by mirroring one half of the source image.
      * The behavior is controlled by the mirrorVertical and mirrorFirstHalf flags.
@@ -198,7 +191,8 @@ public class ImageDisplayPanel extends JPanel {
 
         if (mirrorVertical) {
             int midX = 2010;
-            if (mirrorFirstHalf) { // Keep right half, mirror it to the left
+            if (mirrorFirstHalf) {
+                // Keep right half, mirror it to the left
                 // Draw the right half of the source to the right side of the destination
                 g2d.drawImage(source, midX, 0, width, height, midX, 0, width, height, null);
                 // Draw the right half of the source mirrored to the left side of the destination

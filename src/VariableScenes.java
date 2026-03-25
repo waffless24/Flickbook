@@ -17,7 +17,10 @@ public class VariableScenes {
                 File[] imageFiles = file.listFiles();
 
                 if (imageFiles != null) {
-                    Arrays.sort(imageFiles, Comparator.comparing(File::getName));
+                    Arrays.sort(imageFiles, Comparator.comparingInt(f -> {
+                        String digits = f.getName().replaceAll("[^0-9]", "");
+                        return digits.isEmpty() ? 0 : Integer.parseInt(digits);
+                    }));
                     return imageFiles;
                 }
                 break;

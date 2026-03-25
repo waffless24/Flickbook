@@ -9,7 +9,7 @@ public class SceneLoader {
     public static final String EXTENSION = ".png";
     public static final String SCENES_2D = "2D scenes";
     public static final String[] VARIABLES = {
-            "Inwash", "Pressure", "Total Pressure", "VISQ", "Velocity Z", "Helicity"
+            "Inwash", "Pressure", "Total Pressure", "VISQ", "Upwash", "Helicity"
     };
 
     public final VariableScenes inwashScenes;
@@ -34,7 +34,7 @@ public class SceneLoader {
         List<File> pressure = getVariableScenes("Pressure", allScenes);
         List<File> totalPressure = getVariableScenes("Total Pressure", allScenes);
         List<File> vorticity = getVariableScenes("VISQ", allScenes);
-        List<File> velZ = getVariableScenes("Velocity Z", allScenes);
+        List<File> velZ = getVariableScenes("Upwash", allScenes);
         List<File> helicity = getVariableScenes("Helicity", allScenes);
 
         // Final Variable scene instances to refer back to in main loop
