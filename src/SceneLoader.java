@@ -18,6 +18,8 @@ public class SceneLoader {
     public final VariableScenes vorticityScenes;
     public final VariableScenes velZScenes;
     public final VariableScenes helicityScenes;
+    public final VariableScenes pressureVarianceScenes;
+    public final VariableScenes cptVarianceScenes;
     public final String dir;
 
     public SceneLoader(String dir) {
@@ -36,6 +38,8 @@ public class SceneLoader {
         List<File> vorticity = getVariableScenes("VISQ", allScenes);
         List<File> velZ = getVariableScenes("Upwash", allScenes);
         List<File> helicity = getVariableScenes("Helicity", allScenes);
+        List<File> pressureVariance = getVariableScenes("Pressure Variance", allScenes);
+        List<File> totalPressureVariance = getVariableScenes("Total Pressure Variance", allScenes);
 
         // Final Variable scene instances to refer back to in main loop
         this.inwashScenes = new VariableScenes(inwash);
@@ -44,6 +48,8 @@ public class SceneLoader {
         this.vorticityScenes = new VariableScenes(vorticity);
         this.velZScenes = new VariableScenes(velZ);
         this.helicityScenes = new VariableScenes(helicity);
+        this.pressureVarianceScenes = new VariableScenes(pressureVariance);
+        this.cptVarianceScenes = new VariableScenes(totalPressureVariance);
     }
 
     /**
@@ -57,9 +63,17 @@ public class SceneLoader {
             if (scene == null || !scene.isDirectory()) continue;
             String name = scene.getName();
 
-            // Ensure Presure and Total Pressure does not overlap
+            // Ensure all scenes containing the word 'Pressure' do not overlap
             if ("Pressure".equals(variable)) {
-                if (name.contains("Pressure") && !name.contains("Total Pressure")) {
+                if (name.contains("Pressure") && !name.contains("Total Pressure") && !name.contains("Variance")) {
+                    result.add(scene);
+                }
+            } else if ("Total Pressure".equals(variable)) {
+                if (name.contains("Total Pressure") && !name.contains("Variance")) {
+                    result.add(scene);
+                }
+            } else if ("Pressure Variance".equals(variable)) {
+                if (name.contains("Pressure Variance") && !name.contains("Total Pressure Variance")) {
                     result.add(scene);
                 }
             } else if (name.contains(variable)) {
