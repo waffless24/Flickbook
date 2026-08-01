@@ -72,6 +72,10 @@ public class SceneLoader {
                 if (name.contains("Total Pressure") && !name.contains("Variance")) {
                     result.add(scene);
                 }
+            } else if ("Total Pressure Variance".equals(variable)) {
+                if (name.contains("Total Pressure Variance")) {
+                    result.add(scene);
+                }
             } else if ("Pressure Variance".equals(variable)) {
                 if (name.contains("Pressure Variance") && !name.contains("Total Pressure Variance")) {
                     result.add(scene);

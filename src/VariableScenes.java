@@ -11,15 +11,23 @@ public class VariableScenes {
     public File[] getImages(String view) {
         if (view == null || view.isEmpty()) return new File[0];
 
-        // Find View directory
+        // Find the view directory — folder name must contain the view string
         for (File file : sceneFiles) {
             if (file != null && file.getName().contains(view) && file.isDirectory()) {
-                File[] imageFiles = file.listFiles();
+                File[] imageFiles = file.listFiles(f -> f.isFile() && f.getName().toLowerCase().endsWith(".png"));
 
-                if (imageFiles != null) {
-                    Arrays.sort(imageFiles, Comparator.comparingInt(f -> {
-                        String digits = f.getName().replaceAll("[^0-9]", "");
-                        return digits.isEmpty() ? 0 : Integer.parseInt(digits);
+                if (imageFiles != null && imageFiles.length > 0) {
+                    // Sort by the leading numeric value in the filename (handles "140.00_..." correctly)
+                    Arrays.sort(imageFiles, Comparator.comparingDouble(f -> {
+                        String fname = f.getName();
+                        // Extract leading number before the first underscore or non-numeric/non-dot char
+                        StringBuilder sb = new StringBuilder();
+                        for (char c : fname.toCharArray()) {
+                            if (Character.isDigit(c) || c == '.') sb.append(c);
+                            else break;
+                        }
+                        try { return Double.parseDouble(sb.toString()); }
+                        catch (NumberFormatException e) { return 0.0; }
                     }));
                     return imageFiles;
                 }
@@ -27,10 +35,9 @@ public class VariableScenes {
             }
         }
 
-        return new File[0]; // If nothing found
+        return new File[0];
     }
 
-    // Not used rn, but bethod to retrieve all the specific scenefiles if ever needed in main
     public List<File> getSceneFiles() {
         return Collections.unmodifiableList(sceneFiles);
     }
