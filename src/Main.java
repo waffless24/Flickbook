@@ -22,15 +22,17 @@ public class Main {
     // Sim palette colours
     private static final Color COL_ACT   = new Color(0x1A, 0x1A, 0x1A);
     private static final Color COL_BSL   = new Color(0xCC, 0x11, 0x11);
-    private static final Color COL_DELTA = new Color(0xCF, 0xA1, 0x00);
 
     // View tracker (mutable via lambda)
     private static String currentView = VIEWS[0];
+    private static String currentVariable = "Total Pressure";
+
+    // Shared delta-scene generation engine (colormap + scale settings, caches)
+    private static final DeltaSceneEngine deltaEngine = new DeltaSceneEngine(DeltaSettings.load());
 
     // Scene state holders so the reload handler can reach everything
     private static SceneLoader actLoader;
     private static SceneLoader bslLoader;
-    private static SceneLoader deltaLoader;
 
     // Entry point
     public static void main(String[] args) {
@@ -51,7 +53,7 @@ public class Main {
         window.setLocationRelativeTo(null);
 
         //  Sim-selector sidebar
-        //  Three rows: Active / Baseline / Delta, each with a path field + Browse btn + Reload btn at the bottom.
+        //  Two rows: Active / Baseline, each with a path field + Browse btn + Reload btn at the bottom.
         //  The sidebar is collapsible via a toggle button on its left edge.
 
         Font fieldFont = new Font("Source Sans Pro", Font.PLAIN, 12);
@@ -60,13 +62,11 @@ public class Main {
 
         JTextField actField   = new JTextField(pwd, 30);
         JTextField bslField   = new JTextField(pwd, 30);
-        JTextField deltaField = new JTextField(pwd, 30);
-        for (JTextField tf : new JTextField[]{actField, bslField, deltaField})
+        for (JTextField tf : new JTextField[]{actField, bslField})
             tf.setFont(fieldFont);
 
         JButton actBrowse   = browseButton(window, actField,   fieldFont);
         JButton bslBrowse   = browseButton(window, bslField,   fieldFont);
-        JButton deltaBrowse = browseButton(window, deltaField, fieldFont);
 
         JPanel sidebarContent = new JPanel(new GridBagLayout());
         sidebarContent.setBackground(new Color(245, 245, 245));
@@ -79,7 +79,6 @@ public class Main {
         Object[][] rows = {
                 {"Active",   COL_ACT,   actField,   actBrowse},
                 {"Baseline", COL_BSL,   bslField,   bslBrowse},
-                {"Delta",    COL_DELTA, deltaField, deltaBrowse},
         };
 
         for (int r = 0; r < rows.length; r++) {
@@ -109,7 +108,7 @@ public class Main {
         JLabel hint = new JLabel("ERROR: Directory names MUST contain \"PF\"");
         hint.setFont(hintFont);
         hint.setForeground(Color.GRAY);
-        gc.gridy = 6; gc.gridx = 0; gc.gridwidth = 2; gc.weightx = 1;
+        gc.gridy = 4; gc.gridx = 0; gc.gridwidth = 2; gc.weightx = 1;
         gc.fill  = GridBagConstraints.HORIZONTAL;
         gc.insets = new Insets(8, 3, 2, 3);
         sidebarContent.add(hint, gc);
@@ -118,13 +117,13 @@ public class Main {
         JLabel statusLabel = new JLabel(" ");
         statusLabel.setFont(hintFont);
         statusLabel.setForeground(new Color(0x33, 0x88, 0x33));
-        gc.gridy = 7; gc.insets = new Insets(0, 3, 4, 3);
+        gc.gridy = 5; gc.insets = new Insets(0, 3, 4, 3);
         sidebarContent.add(statusLabel, gc);
 
         // Spacer to push Reload btn to bottom
         JPanel spacer = new JPanel();
         spacer.setOpaque(false);
-        gc.gridy = 8; gc.weighty = 1; gc.fill = GridBagConstraints.VERTICAL;
+        gc.gridy = 6; gc.weighty = 1; gc.fill = GridBagConstraints.VERTICAL;
         sidebarContent.add(spacer, gc);
         gc.weighty = 0;
 
@@ -137,7 +136,7 @@ public class Main {
         reloadBtn.setBorderPainted(false);
         reloadBtn.setFocusPainted(false);
         reloadBtn.setMargin(new Insets(6, 10, 6, 10));
-        gc.gridy = 9; gc.gridx = 0; gc.gridwidth = 2;
+        gc.gridy = 7; gc.gridx = 0; gc.gridwidth = 2;
         gc.fill  = GridBagConstraints.HORIZONTAL;
         gc.insets = new Insets(4, 3, 4, 3);
         sidebarContent.add(reloadBtn, gc);
@@ -151,7 +150,8 @@ public class Main {
 
         // ImageDisplayPanel (starts empty)
         ImageDisplayPanel displayer = new ImageDisplayPanel(
-                new File[0], new File[0], new File[0], 0, "—", "—", "—");
+                new File[0], new File[0], 0, "—", "—");
+        displayer.setDeltaEngine(deltaEngine);
 
         // Right-click popup menu (built once, updated on reload)
         JPopupMenu mainMenu = new JPopupMenu();
@@ -161,16 +161,15 @@ public class Main {
 
         // Reload action
         reloadBtn.addActionListener(e -> {
-            String actPath   = actField.getText().trim();
-            String bslPath   = bslField.getText().trim();
-            String deltaPath = deltaField.getText().trim();
+            String actPath = actField.getText().trim();
+            String bslPath = bslField.getText().trim();
 
             // Resolve each path: empty or default pwd treated as "not provided"
-            File actDir   = resolveSimDir(actPath,   pwd);
-            File bslDir   = resolveSimDir(bslPath,   pwd);
-            File deltaDir = resolveSimDir(deltaPath, pwd);
+            File actDir   = resolveSimDir(actPath, pwd);
+            File bslDir   = resolveSimDir(bslPath, pwd);
+            File deltaDir = null; // no longer collected from the sidebar — see buildMenuBar/rebuildPopupMenu
 
-            if (actDir == null && bslDir == null && deltaDir == null) {
+            if (actDir == null && bslDir == null) {
                 statusLabel.setForeground(COL_BSL);
                 statusLabel.setText("ERROR: At least one valid sim directory is required.");
                 return;
@@ -178,9 +177,8 @@ public class Main {
 
             // Validate non-null entries contain "PF"
             String err = null;
-            if (actDir   != null && !actDir.getName().contains("PF"))   err = "ERROR: Active path MUST contain \"PF\".";
-            else if (bslDir   != null && !bslDir.getName().contains("PF"))   err = "ERROR: Baseline path MUST contain \"PF\".";
-            else if (deltaDir != null && !deltaDir.getName().contains("PF")) err = "ERROR: Delta path MUST contain \"PF\".";
+            if (actDir != null && !actDir.getName().contains("PF"))      err = "ERROR: Active path MUST contain \"PF\".";
+            else if (bslDir != null && !bslDir.getName().contains("PF")) err = "ERROR: Baseline path MUST contain \"PF\".";
 
             if (err != null) {
                 statusLabel.setForeground(COL_BSL);
@@ -196,7 +194,6 @@ public class Main {
                 @Override protected Void doInBackground() throws Exception {
                     actLoader   = actDir   != null ? new SceneLoader(actDir.getAbsolutePath())   : null;
                     bslLoader   = bslDir   != null ? new SceneLoader(bslDir.getAbsolutePath())   : null;
-                    deltaLoader = deltaDir != null ? new SceneLoader(deltaDir.getAbsolutePath()) : null;
                     return null;
                 }
                 @Override protected void done() {
@@ -204,17 +201,17 @@ public class Main {
                         get();
 
                         currentView = VIEWS[0];
+                        currentVariable = "Total Pressure";
+                        displayer.setCurrentVariable(currentVariable);
 
                         File[] actImages   = actLoader   != null ? actLoader.cptScenes.getImages(currentView)   : new File[0];
                         File[] bslImages   = bslLoader   != null ? bslLoader.cptScenes.getImages(currentView)   : new File[0];
-                        File[] deltaImages = deltaLoader != null ? deltaLoader.cptScenes.getImages(currentView) : new File[0];
 
                         String actName   = actDir   != null ? actDir.getName()   : "—";
                         String bslName   = bslDir   != null ? bslDir.getName()   : "—";
-                        String deltaName = deltaDir != null ? deltaDir.getName() : "—";
 
-                        displayer.switchVariable(actImages, bslImages, deltaImages,
-                                0, currentView, actName, bslName, deltaName);
+                        displayer.switchVariable(actImages, bslImages,
+                                0, currentView, actName, bslName);
 
                         File safeActDir   = actDir   != null ? actDir   : new File(pwd);
                         File safeBslDir   = bslDir   != null ? bslDir   : new File(pwd);
@@ -301,15 +298,16 @@ public class Main {
 
             int count = currentView.equals(selectedView) ? -1 : 0;
             if (!currentView.equals(selectedView)) currentView = selectedView;
+            currentVariable = selectedVar;
+            displayer.setCurrentVariable(currentVariable);
 
-            if (actLoader == null && bslLoader == null && deltaLoader == null) return;
+            if (actLoader == null && bslLoader == null) return;
 
             displayer.switchVariable(
-                    getImages(actLoader,   selectedVar, selectedView),
-                    getImages(bslLoader,   selectedVar, selectedView),
-                    getImages(deltaLoader, selectedVar, selectedView),
+                    getImages(actLoader, selectedVar, selectedView),
+                    getImages(bslLoader, selectedVar, selectedView),
                     count, selectedView,
-                    actDir.getName(), bslDir.getName(), deltaDir.getName());
+                    actDir.getName(), bslDir.getName());
         };
 
         for (String variable : VARIABLES) {
@@ -456,6 +454,17 @@ public class Main {
         });
         scenesMenu.add(scenes3DItem);
         menuBar.add(scenesMenu);
+
+        // Settings menu
+        JMenu settingsMenu = new JMenu("Settings");
+        settingsMenu.setFont(new Font("Source Sans Pro", Font.PLAIN, 13));
+
+        JMenuItem deltaSettingsItem = new JMenuItem("Delta Colormaps...");
+        deltaSettingsItem.setFont(new Font("Source Sans Pro", Font.PLAIN, 13));
+        deltaSettingsItem.addActionListener(e ->
+                new DeltaSettingsDialog(window, VARIABLES, deltaEngine).setVisible(true));
+        settingsMenu.add(deltaSettingsItem);
+        menuBar.add(settingsMenu);
 
         return menuBar;
     }

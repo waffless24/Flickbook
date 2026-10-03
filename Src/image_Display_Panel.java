@@ -13,7 +13,6 @@ import java.util.Objects;
 public class ImageDisplayPanel extends JPanel {
     private File[] actSceneFiles;
     private File[] bslSceneFiles;
-    private File[] deltaSceneFiles;
 
     private BufferedImage currentActImage;
     private BufferedImage currentBslImage;
@@ -23,7 +22,6 @@ public class ImageDisplayPanel extends JPanel {
     private boolean deltaSceneToggle = false;
     private final String actSimName;
     private final String bslSimName;
-    private final String deltaSimName;
     private int totalCount;
     private int streamCount;
 
@@ -47,20 +45,22 @@ public class ImageDisplayPanel extends JPanel {
 
     private String actSimNameOverride   = null;
     private String bslSimNameOverride   = null;
-    private String deltaSimNameOverride = null;
 
-    public ImageDisplayPanel(File[] actScene, File[] bslScene, File[] deltaScene, int count,
-                             String actSimName, String bslSimName, String deltaSimName) {
-        this.actSceneFiles   = actScene   != null ? actScene   : new File[0];
-        this.bslSceneFiles   = bslScene   != null ? bslScene   : new File[0];
-        this.deltaSceneFiles = deltaScene != null ? deltaScene : new File[0];
+    // ---- On-the-fly delta scene generation --------------------------------
+    private DeltaSceneEngine deltaEngine = null;
+    private String currentVariable = "Total Pressure";
+    private boolean deltaGenerating = false;
+    private String deltaError = null;
+
+    public ImageDisplayPanel(File[] actScene, File[] bslScene, int count,
+                             String actSimName, String bslSimName) {
+        this.actSceneFiles = actScene != null ? actScene : new File[0];
+        this.bslSceneFiles = bslScene != null ? bslScene : new File[0];
         this.streamCount = count;
-        int maxLen = Math.max(this.actSceneFiles.length,
-                Math.max(this.bslSceneFiles.length, this.deltaSceneFiles.length));
+        int maxLen = Math.max(this.actSceneFiles.length, this.bslSceneFiles.length);
         this.totalCount = maxLen > 0 ? maxLen - 1 : -1;
-        this.actSimName   = actSimName;
-        this.bslSimName   = bslSimName;
-        this.deltaSimName = deltaSimName;
+        this.actSimName = actSimName;
+        this.bslSimName = bslSimName;
 
         loadCurrentImageAsync();
 
@@ -180,31 +180,29 @@ public class ImageDisplayPanel extends JPanel {
             return;
         }
 
-        File actFile   = (actSceneFiles.length   > streamCount) ? actSceneFiles[streamCount]   : null;
-        File bslFile   = (bslSceneFiles.length   > streamCount) ? bslSceneFiles[streamCount]   : null;
-        File deltaFile = (deltaSceneFiles.length > streamCount) ? deltaSceneFiles[streamCount] : null;
+        File actFile = (actSceneFiles.length > streamCount) ? actSceneFiles[streamCount] : null;
+        File bslFile = (bslSceneFiles.length > streamCount) ? bslSceneFiles[streamCount] : null;
 
         new SwingWorker<BufferedImage[], Void>() {
             @Override protected BufferedImage[] doInBackground() {
                 return new BufferedImage[]{
                         loadImageFromFile(actFile),
-                        loadImageFromFile(bslFile),
-                        loadImageFromFile(deltaFile)
+                        loadImageFromFile(bslFile)
                 };
             }
             @Override protected void done() {
                 try {
                     BufferedImage[] result = get();
-                    currentActImage   = result[0];
-                    currentBslImage   = result[1];
-                    currentDeltaImage = result[2];
+                    currentActImage = result[0];
+                    currentBslImage = result[1];
                 } catch (Exception e) {
                     System.err.println("Error retrieving images.");
                     e.printStackTrace();
-                    currentActImage   = null;
-                    currentBslImage   = null;
-                    currentDeltaImage = null;
+                    currentActImage = null;
+                    currentBslImage = null;
                 }
+                currentDeltaImage = null; // stale for the new slice — regenerate below if needed
+                if (deltaSceneToggle) requestDeltaImage();
                 repaint();
             }
         }.execute();
@@ -226,15 +224,12 @@ public class ImageDisplayPanel extends JPanel {
 
     // ---- Public API ------------------------------------------------------
 
-    public void switchVariable(File[] actScene, File[] bslScene, File[] deltaScene,
-                               int count, String selectedView) {
-        this.actSceneFiles   = actScene   != null ? actScene   : new File[0];
-        this.bslSceneFiles   = bslScene   != null ? bslScene   : new File[0];
-        this.deltaSceneFiles = deltaScene != null ? deltaScene : new File[0];
-        this.selectedView    = selectedView;
+    public void switchVariable(File[] actScene, File[] bslScene, int count, String selectedView) {
+        this.actSceneFiles = actScene != null ? actScene : new File[0];
+        this.bslSceneFiles = bslScene != null ? bslScene : new File[0];
+        this.selectedView  = selectedView;
 
-        int maxLen = Math.max(this.actSceneFiles.length,
-                Math.max(this.bslSceneFiles.length, this.deltaSceneFiles.length));
+        int maxLen = Math.max(this.actSceneFiles.length, this.bslSceneFiles.length);
         this.totalCount = maxLen > 0 ? maxLen - 1 : -1;
 
         if (count != -1) {
@@ -246,22 +241,144 @@ public class ImageDisplayPanel extends JPanel {
         loadCurrentImageAsync();
     }
 
-    public void switchVariable(File[] actScene, File[] bslScene, File[] deltaScene,
-                               int count, String selectedView,
-                               String newActName, String newBslName, String newDeltaName) {
-        updateSimNames(newActName, newBslName, newDeltaName);
-        switchVariable(actScene, bslScene, deltaScene, count, selectedView);
+    public void switchVariable(File[] actScene, File[] bslScene, int count, String selectedView,
+                               String newActName, String newBslName) {
+        updateSimNames(newActName, newBslName);
+        switchVariable(actScene, bslScene, count, selectedView);
     }
 
-    void updateSimNames(String act, String bsl, String delta) {
-        this.actSimNameOverride   = act;
-        this.bslSimNameOverride   = bsl;
-        this.deltaSimNameOverride = delta;
+    void updateSimNames(String act, String bsl) {
+        this.actSimNameOverride = act;
+        this.bslSimNameOverride = bsl;
     }
 
     public void toggleActive()   { deltaSceneToggle = false; actSceneToggle = true;  repaint(); }
     public void toggleBaseline() { deltaSceneToggle = false; actSceneToggle = false; repaint(); }
-    public void toggleDelta()    { deltaSceneToggle = true;  actSceneToggle = false; repaint(); }
+    public void toggleDelta()    {
+        deltaSceneToggle = true;
+        actSceneToggle = false;
+        requestDeltaImage();
+        repaint();
+    }
+
+    /** Wires up the shared delta-generation engine (colormap + scale settings, caches). */
+    public void setDeltaEngine(DeltaSceneEngine engine) { this.deltaEngine = engine; }
+
+    /** Keeps the panel aware of which variable's images are currently loaded. */
+    public void setCurrentVariable(String variable) { this.currentVariable = variable; }
+
+    /**
+     * Generates (or fetches from cache) the delta scene for the currently
+     * selected variable/view/slice from the Active + Baseline PNGs, using
+     * that variable's colormap + scale settings. Always diffs Active with
+     * respect to Baseline — there is no separate "third sim" delta source.
+     */
+    private void requestDeltaImage() {
+        deltaError = null;
+
+        if (deltaEngine == null) {
+            deltaError = "Delta engine not initialized.";
+            currentDeltaImage = null;
+            repaint();
+            return;
+        }
+
+        File actFile = (streamCount >= 0 && streamCount < actSceneFiles.length) ? actSceneFiles[streamCount] : null;
+        File bslFile = (streamCount >= 0 && streamCount < bslSceneFiles.length) ? bslSceneFiles[streamCount] : null;
+        if (actFile == null || bslFile == null) {
+            deltaError = "Need both Active and Baseline scenes loaded to generate a delta.";
+            currentDeltaImage = null;
+            repaint();
+            return;
+        }
+
+        DeltaSettings.VariableConfig cfg = deltaEngine.getSettings().get(currentVariable);
+        boolean missingOrig  = cfg.originalCmapPath == null || cfg.originalCmapPath.isBlank();
+        String globalDeltaCmap = deltaEngine.getSettings().getDeltaCmapPath();
+        boolean missingDelta = globalDeltaCmap == null || globalDeltaCmap.isBlank();
+        if (missingOrig || missingDelta) {
+            String which = missingOrig && missingDelta ? "an original and delta colormap"
+                    : missingOrig ? "an original colormap for \"" + currentVariable + "\"" : "a delta colormap";
+            deltaError = "Missing " + which + " — set it in Settings > Delta Colormaps.";
+            currentDeltaImage = null;
+            repaint();
+            return;
+        }
+
+        BufferedImage cached = deltaEngine.getCached(currentVariable, actFile, bslFile);
+        if (cached != null) {
+            currentDeltaImage = cached;
+            deltaGenerating = false;
+            repaint();
+            prefetchNeighbors();
+            return;
+        }
+
+        deltaGenerating = true;
+        repaint(); // shows the "Generating delta scene..." placeholder right away
+
+        final String variable = currentVariable;
+        // Snapshot the already-decoded images rather than re-reading the
+        // files: they're already sitting in memory from loadCurrentImageAsync,
+        // so this avoids decoding the same PNGs a second time.
+        final BufferedImage actSnapshot = currentActImage;
+        final BufferedImage bslSnapshot = currentBslImage;
+        new SwingWorker<BufferedImage, Void>() {
+            @Override protected BufferedImage doInBackground() throws Exception {
+                return deltaEngine.generate(variable, actFile, actSnapshot, bslFile, bslSnapshot);
+            }
+            @Override protected void done() {
+                deltaGenerating = false;
+                try {
+                    BufferedImage result = get();
+                    currentDeltaImage = result;
+                    if (result == null) deltaError = "Delta generation returned no image.";
+                } catch (Exception ex) {
+                    currentDeltaImage = null;
+                    deltaError = (ex.getCause() != null ? ex.getCause().getMessage() : ex.getMessage());
+                    System.err.println("Delta scene generation failed: " + deltaError);
+                }
+                repaint();
+                prefetchNeighbors();
+            }
+        }.execute();
+    }
+
+    /**
+     * Best-effort background generation of the neighboring slices' delta
+     * images so that scrubbing with the arrow keys hits the cache (near-
+     * instant) instead of generating from scratch on every press. Silently
+     * does nothing for slices that are out of range, already cached, or
+     * missing a source file — failures here are non-fatal since this is
+     * purely a warm-up, not something the user is waiting on.
+     */
+    private void prefetchNeighbors() {
+        if (deltaEngine == null) return;
+        DeltaSettings.VariableConfig cfg = deltaEngine.getSettings().get(currentVariable);
+        String globalDeltaCmap = deltaEngine.getSettings().getDeltaCmapPath();
+        if (cfg.originalCmapPath == null || cfg.originalCmapPath.isBlank()) return;
+        if (globalDeltaCmap == null || globalDeltaCmap.isBlank()) return;
+
+        final String variable = currentVariable;
+        for (int idx : new int[]{streamCount - 1, streamCount + 1}) {
+            if (idx < 0 || idx > totalCount) continue;
+            final File actFile = (idx < actSceneFiles.length) ? actSceneFiles[idx] : null;
+            final File bslFile = (idx < bslSceneFiles.length) ? bslSceneFiles[idx] : null;
+            if (actFile == null || bslFile == null) continue;
+            if (deltaEngine.getCached(variable, actFile, bslFile) != null) continue;
+
+            new SwingWorker<Void, Void>() {
+                @Override protected Void doInBackground() {
+                    try {
+                        deltaEngine.generate(variable, actFile, bslFile);
+                    } catch (Exception ex) {
+                        // best-effort only — the user isn't waiting on this
+                    }
+                    return null;
+                }
+            }.execute();
+        }
+    }
 
     public void toggleStreamDown() {
         if (totalCount < 0) return;
@@ -304,10 +421,11 @@ public class ImageDisplayPanel extends JPanel {
 
         if (deltaSceneToggle) {
             imageToDraw = currentDeltaImage;
-            textOverlay = (deltaSimNameOverride != null ? deltaSimNameOverride : this.deltaSimName)
-                    + (currentDeltaImage == null ? "  [not loaded]" : "");
-            currentFile = (streamCount >= 0 && streamCount < deltaSceneFiles.length)
-                    ? deltaSceneFiles[streamCount] : null;
+            String actLbl = (actSimNameOverride != null ? actSimNameOverride : this.actSimName);
+            String bslLbl = (bslSimNameOverride != null ? bslSimNameOverride : this.bslSimName);
+            textOverlay = "\u0394  " + actLbl + " \u2212 " + bslLbl;
+            currentFile = (streamCount >= 0 && streamCount < actSceneFiles.length)
+                    ? actSceneFiles[streamCount] : null;
         } else if (actSceneToggle) {
             imageToDraw = currentActImage;
             textOverlay = (actSimNameOverride != null ? actSimNameOverride : this.actSimName)
@@ -418,7 +536,11 @@ public class ImageDisplayPanel extends JPanel {
             // No image — show placeholder text
             g.setColor(new Color(120, 120, 120));
             g.setFont(textFont);
-            String msg = (totalCount < 0)
+            String msg = deltaGenerating
+                    ? "Generating delta scene..."
+                    : (deltaSceneToggle && deltaError != null)
+                    ? deltaError
+                    : (totalCount < 0)
                     ? "No scenes loaded — use the sidebar to select and load sims."
                     : "Loading...";
             FontMetrics fm = g.getFontMetrics();
